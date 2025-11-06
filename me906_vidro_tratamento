@@ -1,0 +1,37 @@
+import pandas as pd
+import streamlit as st
+
+# https://raw.githubusercontent.com/ME906-UNICAMP/trabalho-final-last-dance/refs/heads/main/vidro.csv?token=GHSAT0AAAAAADOXQQ5IVDBHZPUI7NJDEOMI2INB5GQ
+url = "https://raw.githubusercontent.com/ME906-UNICAMP/trabalho-final-last-dance/main/vidro.csv"
+df_total = pd.read_csv(url)
+df.columns = [
+    "index",
+    "id_number",          # 0. Id number: 1 to 214
+    "refractive_index",   # 1. RI: refractive index
+    "sodium",             # 2. Na: Sodium
+    "magnesium",          # 3. Mg: Magnesium
+    "aluminum",           # 4. Al: Aluminum
+    "silicon",            # 5. Si: Silicon
+    "potassium",          # 6. K: Potassium
+    "calcium",            # 7. Ca: Calcium
+    "barium",             # 8. Ba: Barium
+    "iron",               # 9. Fe: Iron
+    "glass_type"          # 10. Type of glass
+]
+
+# Exibir no Streamlit
+def agrupar_tipos(valor):
+    if valor in [1, 3]:
+        return "TIPO_1"
+    elif valor in [2, 4]:
+        return "TIPO_2"
+    elif valor in [5, 6, 7]:
+        return "TIPO_3"
+    else:
+        return "outros"
+
+df["glass_group"] = df["glass_type"].apply(agrupar_tipos)
+
+# Exibir resultado no Streamlit
+st.dataframe(df)
+
