@@ -506,4 +506,162 @@ with tab_comp:
     knn_final.fit(X_train_std, y_train)
     y_pred_knn = knn_final.predict(X_test_std)
     knn_test_acc = accuracy_score(y_test, y_pred_knn)
- 
+    knn_test_sens, knn_test_esp = sens_esp(y_test, y_pred_knn, labels_sorted)
+    try:
+        knn_test_auc = roc_auc_score(y_test, knn_final.predict_proba(X_test_std), multi_class='ovr', average='macro')
+    except (ValueError, RuntimeWarning):
+        knn_test_auc = np.nan
+
+    # NB
+    nb_final = MultinomialNB()
+    nb_final.fit(X_train_nb, y_train_nb)
+    y_pred_nb = nb_final.predict(X_test_nb)
+    nb_test_acc = accuracy_score(y_test_nb, y_pred_nb)
+    nb_test_sens, nb_test_esp = sens_esp(y_test_nb, y_pred_nb, labels_sorted)
+    try:
+        nb_test_auc = roc_auc_score(y_test_nb, nb_final.predict_proba(X_test_nb), multi_class='ovr', average='macro')
+    except (ValueError, RuntimeWarning):
+        nb_test_auc = np.nan
+
+    # LightGBM
+    lgbm_final = LGBMClassifier(
+        random_state=42, n_jobs=-1, verbose=-1,
+        subsample_freq=1, subsample=0.7, reg_lambda=2, reg_alpha=0.1,
+        num_leaves=12, min_split_gain=0.1, min_child_samples=10,
+        max_depth=3, max_bin=255, learning_rate=0.1, colsample_bytree=0.8
+    )
+    lgbm_final.fit(X_train_std, y_train)
+    y_pred_lgbm = lgbm_final.predict(X_test_std)
+    lgbm_test_acc = accuracy_score(y_test, y_pred_lgbm)
+    lgbm_test_sens, lgbm_test_esp = sens_esp(y_test, y_pred_lgbm, labels_sorted)
+    try:
+        lgbm_test_auc = roc_auc_score(y_test, lgbm_final.predict_proba(X_test_std), multi_class='ovr', average='macro')
+    except (ValueError, RuntimeWarning):
+        lgbm_test_auc = np.nan
+
+    # Comprehensive comparison table
+    st.subheader("Performance: CV vs Test Set")
+    comp_df = pd.DataFrame({
+        "Modelo": ["LDA", "QDA", "KNN (selected k)", "Naive Bayes", "LightGBM"],
+        "Acc (CV)": [
+            np.mean(lda_acc),
+            np.mean(qda_acc),
+            np.mean(knn_acc),
+            np.mean(nb_acc),
+            np.mean(lgbm_acc)
+        ],
+        "Acc (Test)": [
+            lda_test_acc,
+            qda_test_acc,
+            knn_test_acc,
+            nb_test_acc,
+            lgbm_test_acc
+        ],
+        "Δ Acc": [
+            np.mean(lda_acc) - lda_test_acc,
+            np.mean(qda_acc) - qda_test_acc,
+            np.mean(knn_acc) - knn_test_acc,
+            np.mean(nb_acc) - nb_test_acc,
+            np.mean(lgbm_acc) - lgbm_test_acc
+        ],
+        "Sens (CV)": [
+            np.mean(lda_sens),
+            np.mean(qda_sens),
+            np.mean(knn_sens),
+            np.mean(nb_sens),
+            np.mean(lgbm_sens)
+        ],
+        "Sens (Test)": [
+            lda_test_sens,
+            qda_test_sens,
+            knn_test_sens,
+            nb_test_sens,
+            lgbm_test_sens
+        ],
+        "AUC (CV)": [
+            np.nanmean(lda_auc),
+            np.nanmean(qda_auc),
+            np.nanmean(knn_auc),
+            np.nanmean(nb_auc),
+            np.nanmean(lgbm_auc)
+        ],
+        "AUC (Test)": [
+            lda_test_auc,
+            qda_test_auc,
+            knn_test_auc,
+            nb_test_auc,
+            lgbm_test_auc
+        ]
+    })
+    st.dataframe(comp_df.style.format({
+        "Acc (CV)": "{:.3f}",
+        "Acc (Test)": "{:.3f}",
+        "Δ Acc": "{:+.3f}",
+        "Sens (CV)": "{:.3f}",
+        "Sens (Test)": "{:.3f}",
+        "AUC (CV)": "{:.3f}",
+        "AUC (Test)": "{:.3f}"
+    }))
+
+    # CV vs Test comparison chart
+    st.subheader("CV vs Test Accuracy Comparison")
+    comparison_chart_df = pd.DataFrame({
+        "Modelo": ["LDA", "QDA", "KNN", "NB", "LightGBM"] * 2,
+        "Dataset": ["CV (mean)"] * 5 + ["Test"] * 5,
+        "Accuracy": [
+            np.mean(lda_acc), np.mean(qda_acc), np.mean(knn_acc), np.mean(nb_acc), np.mean(lgbm_acc),
+            lda_test_acc, qda_test_acc, knn_test_acc, nb_test_acc, lgbm_test_acc
+        ]
+    })
+    fig_comp = px.bar(
+        comparison_chart_df,
+        x="Modelo",
+        y="Accuracy",
+        color="Dataset",
+        barmode="group",
+        title="Cross-Validation vs Test Set Accuracy",
+        color_discrete_map={"CV (mean)": "#636EFA", "Test": "#EF553B"}
+    )
+    st.plotly_chart(fig_comp)
+
+    # Overfitting analysis
+    st.subheader("Análise de Overfitting")
+    st.write("**Gap = CV - Test** (valores positivos grandes indicam possível overfitting)")
+
+    gap_df = pd.DataFrame({
+        "Modelo": ["LDA", "QDA", "KNN (selected k)", "Naive Bayes", "LightGBM"],
+        "Gap (Acc)": [
+            np.mean(lda_acc) - lda_test_acc,
+            np.mean(qda_acc) - qda_test_acc,
+            np.mean(knn_acc) - knn_test_acc,
+            np.mean(nb_acc) - nb_test_acc,
+            np.mean(lgbm_acc) - lgbm_test_acc
+        ],
+        "Interpretação": [
+            "Boa generalização" if abs(np.mean(lda_acc) - lda_test_acc) < 0.05 else "Possível overfitting" if np.mean(lda_acc) - lda_test_acc > 0.05 else "Test melhor que CV",
+            "Boa generalização" if abs(np.mean(qda_acc) - qda_test_acc) < 0.05 else "Possível overfitting" if np.mean(qda_acc) - qda_test_acc > 0.05 else "Test melhor que CV",
+            "Boa generalização" if abs(np.mean(knn_acc) - knn_test_acc) < 0.05 else "Possível overfitting" if np.mean(knn_acc) - knn_test_acc > 0.05 else "Test melhor que CV",
+            "Boa generalização" if abs(np.mean(nb_acc) - nb_test_acc) < 0.05 else "Possível overfitting" if np.mean(nb_acc) - nb_test_acc > 0.05 else "Test melhor que CV",
+            "Boa generalização" if abs(np.mean(lgbm_acc) - lgbm_test_acc) < 0.05 else "Possível overfitting" if np.mean(lgbm_acc) - lgbm_test_acc > 0.05 else "Test melhor que CV"
+        ]
+    })
+
+    def highlight_gap(val):
+        if abs(val) < 0.05:
+            return 'background-color: #90EE90'  # Light green
+        elif val > 0.05:
+            return 'background-color: #FFB6C6'  # Light red
+        else:
+            return 'background-color: #87CEEB'  # Light blue
+
+    st.dataframe(gap_df.style.format({"Gap (Acc)": "{:+.3f}"}).applymap(highlight_gap, subset=["Gap (Acc)"]))
+
+    st.subheader("Boxplot: Variabilidade CV (todas as métricas por fold)")
+    # reorganizar cv_df para plot (usar os arrays já calculados)
+    cv_comp_df = pd.DataFrame({
+        "Fold": list(range(1, len(lda_acc) + 1)) * 5,
+        "Modelo": ["LDA"] * len(lda_acc) + ["QDA"] * len(qda_acc) + ["KNN"] * len(knn_acc) + ["NB"] * len(nb_acc) + ["LightGBM"] * len(lgbm_acc),
+        "Accuracy": lda_acc + qda_acc + knn_acc + nb_acc + lgbm_acc
+    })
+    fig_box = px.box(cv_comp_df, x="Modelo", y="Accuracy", title="Distribuição das Acurácias (CV) — Modelos")
+    st.plotly_chart(fig_box)
